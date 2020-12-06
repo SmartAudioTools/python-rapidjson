@@ -210,7 +210,7 @@ static PyObject* do_encode(PyObject* value, bool skipInvalidKeys, PyObject* defa
                            char indentChar, unsigned indentCount, NumberMode numberMode,
                            DatetimeMode datetimeMode, UuidMode uuidMode,
                            BytesMode bytesMode, IterableMode iterableMode,
-                           MappingMode mappingMode);
+                           MappingMode mappingMode,bool returnBytes);
 static PyObject* do_stream_encode(PyObject* value, PyObject* stream, size_t chunkSize,
                                   bool skipInvalidKeys, PyObject* defaultFn,
                                   bool sortKeys, bool ensureAscii, WriteMode writeMode,
@@ -2791,6 +2791,7 @@ dumps(PyObject* self, PyObject* args, PyObject* kwargs)
     char indentChar = ' ';
     unsigned indentCount = 4;
     int allowNan = -1;
+    int returnBytes = false;
     static char const* kwlist[] = {
         "obj",
         "skipkeys",
@@ -2812,7 +2813,7 @@ dumps(PyObject* self, PyObject* args, PyObject* kwargs)
         NULL
     };
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|$ppOOpOOOOOOOp:rapidjson.dumps",
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|$ppOOpOOOOOOOpp:rapidjson.dumps",
                                      (char**) kwlist,
                                      &value,
                                      &skipKeys,
@@ -2827,6 +2828,7 @@ dumps(PyObject* self, PyObject* args, PyObject* kwargs)
                                      &writeModeObj,
                                      &iterableModeObj,
                                      &mappingModeObj,
+                                     &returnBytes,
                                      &allowNan))
         return NULL;
 
@@ -2992,7 +2994,7 @@ dumps(PyObject* self, PyObject* args, PyObject* kwargs)
     return do_encode(value, skipKeys ? true : false, defaultFn, sortKeys ? true : false,
                      ensureAscii ? true : false, writeMode, indentChar, indentCount,
                      numberMode, datetimeMode, uuidMode, bytesMode, iterableMode,
-                     mappingMode);
+                     mappingMode,returnBytes ? true : false);
 }
 
 
@@ -3373,22 +3375,44 @@ static PyTypeObject Encoder_Type = {
                     mappingMode)                        \
      ? PyUnicode_FromString(buf.GetString()) : NULL)
 
+#define DUMPB_INTERNAL_CALL                             \
+    (dumps_internal(&writer,                            \
+                    value,                              \
+                    skipInvalidKeys,                    \
+                    defaultFn,                          \
+                    sortKeys,                           \
+                    numberMode,                         \
+                    datetimeMode,                       \
+                    uuidMode,                           \
+                    bytesMode,                          \
+                    iterableMode,                       \
+                    mappingMode)                        \
+     ? PyBytes_FromString(buf.GetString()) : NULL)
+
 
 static PyObject*
 do_encode(PyObject* value, bool skipInvalidKeys, PyObject* defaultFn, bool sortKeys,
           bool ensureAscii, WriteMode writeMode, char indentChar, unsigned indentCount,
           NumberMode numberMode, DatetimeMode datetimeMode, UuidMode uuidMode,
-          BytesMode bytesMode, IterableMode iterableMode, MappingMode mappingMode)
+          BytesMode bytesMode, IterableMode iterableMode, MappingMode mappingMode,bool returnBytes)
 {
     if (writeMode == WM_COMPACT) {
         if (ensureAscii) {
             GenericStringBuffer<ASCII<> > buf;
             Writer<GenericStringBuffer<ASCII<> >, UTF8<>, ASCII<> > writer(buf);
-            return DUMPS_INTERNAL_CALL;
+            if (returnBytes) {
+                return DUMPB_INTERNAL_CALL;
+            } else { 
+                return DUMPS_INTERNAL_CALL;
+            }
         } else {
             StringBuffer buf;
             Writer<StringBuffer> writer(buf);
-            return DUMPS_INTERNAL_CALL;
+            if (returnBytes) {
+                return DUMPB_INTERNAL_CALL;
+            } else { 
+                return DUMPS_INTERNAL_CALL;
+            }            
         }
     } else if (ensureAscii) {
         GenericStringBuffer<ASCII<> > buf;
@@ -3397,7 +3421,11 @@ do_encode(PyObject* value, bool skipInvalidKeys, PyObject* defaultFn, bool sortK
         if (writeMode & WM_SINGLE_LINE_ARRAY) {
             writer.SetFormatOptions(kFormatSingleLineArray);
         }
-        return DUMPS_INTERNAL_CALL;
+        if (returnBytes) {
+            return DUMPB_INTERNAL_CALL;
+        } else { 
+            return DUMPS_INTERNAL_CALL;
+        }
     } else {
         StringBuffer buf;
         PrettyWriter<StringBuffer> writer(buf);
@@ -3405,7 +3433,11 @@ do_encode(PyObject* value, bool skipInvalidKeys, PyObject* defaultFn, bool sortK
         if (writeMode & WM_SINGLE_LINE_ARRAY) {
             writer.SetFormatOptions(kFormatSingleLineArray);
         }
-        return DUMPS_INTERNAL_CALL;
+        if (returnBytes) {
+            return DUMPB_INTERNAL_CALL;
+        } else { 
+            return DUMPS_INTERNAL_CALL;
+        }        
     }
 }
 
@@ -3468,6 +3500,7 @@ encoder_call(PyObject* self, PyObject* args, PyObject* kwargs)
         "obj",
         "stream",
         "chunk_size",
+        "return_bytes",
         NULL
     };
     PyObject* value;
@@ -3476,12 +3509,14 @@ encoder_call(PyObject* self, PyObject* args, PyObject* kwargs)
     size_t chunkSize = 65536;
     PyObject* defaultFn = NULL;
     PyObject* result;
+    int returnBytes = false;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|O$O",
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|O$Op",
                                      (char**) kwlist,
                                      &value,
                                      &stream,
-                                     &chunkSizeObj))
+                                     &chunkSizeObj,
+                                     &returnBytes))
         return NULL;
 
     EncoderObject* e = (EncoderObject*) self;
@@ -3520,7 +3555,7 @@ encoder_call(PyObject* self, PyObject* args, PyObject* kwargs)
         result = do_encode(value, e->skipInvalidKeys, defaultFn, e->sortKeys,
                            e->ensureAscii, e->writeMode, e->indentChar, e->indentCount,
                            e->numberMode, e->datetimeMode, e->uuidMode, e->bytesMode,
-                           e->iterableMode, e->mappingMode);
+                           e->iterableMode, e->mappingMode , returnBytes);
     }
 
     if (defaultFn != NULL)
