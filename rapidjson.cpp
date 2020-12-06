@@ -2806,6 +2806,7 @@ dumps(PyObject* self, PyObject* args, PyObject* kwargs)
         "write_mode",
         "iterable_mode",
         "mapping_mode",
+		"return_bytes",
 
         /* compatibility with stdlib json */
         "allow_nan",
